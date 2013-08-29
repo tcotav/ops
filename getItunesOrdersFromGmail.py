@@ -1,0 +1,82 @@
+import email, getpass, imaplib, datetime
+
+# ref: http://stackoverflow.com/questions/7314942/python-imaplib-to-get-gmail-inbox-subjects-titles-and-sender-name?rq=1
+
+user = raw_input("Enter your GMail username --> ")
+gmailLabel="itunes"
+NUM_DAYS=60
+
+def process(str):
+    lines=str.split("\r\n")
+    orderNum=orderDate=orderTotal=0
+    for l in lines:
+        l=l.strip()
+        if l[:9] == "Order Num":
+            items=l.split(" ")
+            orderNum=items[2]
+        elif l[:12] == "Receipt Date":
+            items=l.split(" ")
+            orderDate=items[2]
+        elif l[:11] == "Order Total":
+            items=l.split(" ")
+            orderTotal=items[2]
+            # we know this is last item we want from email so exist loop
+            break
+    return (orderDate, "%s,%s,%s" % (orderNum, orderDate, orderTotal))
+
+def getMail():
+    # password prompt
+    pwd = getpass.getpass("Enter your password --> ")
+
+    m = imaplib.IMAP4_SSL("imap.gmail.com")
+    m.login(user, pwd)
+
+    # select folder
+    m.list()
+    #m.select('inbox')
+    m.select(gmailLabel)
+
+    date = (datetime.date.today() - datetime.timedelta(NUM_DAYS)).strftime("%d-%b-%Y")
+    (typ, data) = m.search(None, ('ALL'), '(SENTSINCE {0})'.format(date))
+    ids = data[0]
+    id_list = ids.split()
+    #get the most recent email id
+    latest_email_id = int( id_list[0] )
+
+    msgDict={}
+    for i in id_list:
+        typ, data = m.fetch( i, '(RFC822)' )
+        payload=""
+        for response_part in data:
+          if isinstance(response_part, tuple):
+              msg = email.message_from_string(response_part[1])
+
+              for part in msg.walk():
+                  # multipart are just containers, so we skip them
+                  if part.get_content_maintype() == 'multipart':
+                    continue
+
+                  # we are interested only in the simple text messages
+                  if part.get_content_subtype() != 'plain':
+                    continue
+                  payload += part.get_payload()
+
+        k, v=process(payload)
+        msgDict[k] = v
+
+    keys=msgDict.keys()
+    keys.sort(reverse=True)
+    for k in keys:
+        print msgDict[k]
+
+if __name__ == "__main__":
+    test=False
+
+    if test:
+        f=open("data.txt")
+        s=""
+        s=" ".join(f.readlines())
+        process(s)
+        f.close()
+
+    getMail()
